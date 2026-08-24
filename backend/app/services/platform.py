@@ -1138,15 +1138,7 @@ class PlatformService:
         if not secret.model_id:
             raise ValueError("Choose an Open WebUI agent or model before syncing knowledge.")
 
-        summary = self.get_branch_cache_summary_for_user(
-            session.server.id,
-            session.user.preferred_username,
-            project_id,
-            branch_id,
-            include_all_workbench_admin=self._has_workbench_admin_model_visibility(session),
-        )
-        if summary is None:
-            raise ValueError("The selected stored project branch is not available to this Workbench user.")
+        session = await self._require_live_twc_agent_branch_access(session, project_id, branch_id)
 
         if report is None:
             await asyncio.to_thread(self._validate_three_ds_corpus)
@@ -1287,6 +1279,8 @@ class PlatformService:
         if not payload.messages:
             raise ValueError("At least one message is required.")
 
+        session = await self._require_live_twc_agent_branch_access(session, payload.project_id, payload.branch_id)
+
         working_secret = secret
         if payload.sync_knowledge and (
             not secret.knowledge_file_id
@@ -1374,6 +1368,94 @@ class PlatformService:
             raw_response=raw_payload if isinstance(raw_payload, dict) else {"payload": raw_payload},
             message="Workbench Agent used the mapped Open WebUI model with validated, query-routed evidence from the bundled Workbench reference and the accessible branch model.",
         )
+
+    async def _require_live_twc_agent_branch_access(
+        self,
+        session: SessionData,
+        project_id: str,
+        branch_id: str,
+    ) -> SessionData:
+        summary = self.repo.get_branch_cache_summary(session.server.id, project_id, branch_id)
+        if summary is None:
+            raise ValueError("The selected stored project branch is not available in Workbench cache.")
+        if self._has_workbench_admin_model_visibility(session):
+            return session
+        if session.user.auth_source == "workbench-local":
+            raise PermissionError(
+                "Workbench Agent requires a live TWC-authenticated session to verify project access. "
+                "Workbench administrators bypass this because they are trusted cache administrators."
+            )
+
+        refreshed_at = utcnow()
+        session = await self._refresh_session_credentials_if_needed(session)
+        adapter = self._adapter_for_session(session)
+        current_user_context = await adapter.current_user_context()
+        if current_user_context is not None:
+            session = self.sessions.update_authorization_context(
+                session,
+                self._build_authorization_context(
+                    session.user.preferred_username,
+                    current_user_context,
+                    upstream_roles=None,
+                    upstream_groups=None,
+                ),
+            )
+        permission_inventory = await self._server_permission_inventory(
+            adapter,
+            session.server.id,
+            allow_refresh=False,
+        )
+        session = self._attach_inventory_role_names(session, permission_inventory)
+        readonly_branch_ids: list[str] = []
+        if (
+            not session.authorization_context.permissions_included
+            or self._session_resource_permission_flags(session, summary.project_id, summary.workspace_id)["editable"]
+        ):
+            try:
+                readonly_branch_ids = await adapter._user_readonly_branches(
+                    summary.project_id,
+                    self._user_key(session.user.preferred_username),
+                )
+            except Exception as exc:
+                logger.info(
+                    "twc-agent-readonly-branch-check-unavailable",
+                    user=session.user.preferred_username,
+                    server_id=session.server.id,
+                    project_id=summary.project_id,
+                    branch_id=summary.branch_id,
+                    detail=self._permission_error_text(exc),
+                )
+        branch_access, model_permissions, permission_attachment = await self._resolve_user_branch_permission_snapshot(
+            session,
+            summary,
+            adapter=adapter,
+            permission_inventory=permission_inventory,
+            readonly_branch_ids=readonly_branch_ids,
+            refreshed_at=refreshed_at,
+        )
+        self.repo.upsert_branch_access_records([branch_access])
+        self.repo.replace_model_permissions_for_user_branch(
+            self._user_key(session.user.preferred_username),
+            session.server.id,
+            project_id,
+            branch_id,
+            model_permissions,
+        )
+        if permission_attachment is not None:
+            self.repo.upsert_branch_permission_attachment(permission_attachment)
+        self.repo.delete_user_cache(
+            self._user_key(session.user.preferred_username),
+            session.server.id,
+            PROJECT_LIST_CACHE_KEY,
+        )
+        self.repo.delete_user_cache_prefix(
+            self._user_key(session.user.preferred_username),
+            session.server.id,
+            f"project:{project_id}:branch:{branch_id}:",
+        )
+        if not branch_access.accessible:
+            raise PermissionError("Teamwork Cloud does not currently grant this user access to the selected project branch.")
+        return session
 
     def add_bookmark(self, session: SessionData, bookmark: Bookmark) -> list[Bookmark]:
         return self.sessions.upsert_bookmark(session, bookmark).bookmarks

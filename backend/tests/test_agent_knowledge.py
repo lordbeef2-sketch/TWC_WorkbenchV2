@@ -4,7 +4,7 @@ from pathlib import Path
 import unittest
 
 from app.services.platform import PlatformService
-from app.models.domain import BranchCacheSummary, WorkbenchAgentAdminSettings, WorkbenchAgentSecret
+from app.models.domain import BranchCacheSummary, UserContext, WorkbenchAgentAdminSettings, WorkbenchAgentSecret
 from app.services.three_ds_corpus import CorpusDocument
 
 
@@ -176,6 +176,45 @@ class WorkbenchAgentKnowledgeTests(unittest.TestCase):
         self.assertIn("getOwnedElement", context)
         self.assertNotIn("C:\\authoritative\\3DS_KB", context)
         self.assertNotIn("Corpus root:", context)
+
+
+class WorkbenchAgentLiveAccessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_agent_live_access_gate_allows_workbench_admin_without_twc_probe(self) -> None:
+        service = object.__new__(PlatformService)
+        summary = BranchCacheSummary(server_id="twc-2024x", project_id="project", branch_id="master", model_count=1)
+        service.repo = SimpleNamespace(get_branch_cache_summary=lambda *args: summary)
+        service._has_workbench_admin_model_visibility = lambda _session: True
+        session = SimpleNamespace(
+            server=SimpleNamespace(id="twc-2024x"),
+            user=UserContext(
+                preferred_username="admin",
+                server_id="twc-2024x",
+                server_name="TWC 2024x",
+                auth_source="workbench-local",
+            ),
+        )
+
+        resolved = await service._require_live_twc_agent_branch_access(session, "project", "master")
+
+        self.assertIs(resolved, session)
+
+    async def test_agent_live_access_gate_rejects_local_non_admin_without_twc_session(self) -> None:
+        service = object.__new__(PlatformService)
+        summary = BranchCacheSummary(server_id="twc-2024x", project_id="project", branch_id="master", model_count=1)
+        service.repo = SimpleNamespace(get_branch_cache_summary=lambda *args: summary)
+        service._has_workbench_admin_model_visibility = lambda _session: False
+        session = SimpleNamespace(
+            server=SimpleNamespace(id="twc-2024x"),
+            user=UserContext(
+                preferred_username="user",
+                server_id="twc-2024x",
+                server_name="TWC 2024x",
+                auth_source="workbench-local",
+            ),
+        )
+
+        with self.assertRaisesRegex(PermissionError, "live TWC-authenticated session"):
+            await service._require_live_twc_agent_branch_access(session, "project", "master")
 
 
 class WorkbenchAgentKnowledgeUploadTests(unittest.IsolatedAsyncioTestCase):

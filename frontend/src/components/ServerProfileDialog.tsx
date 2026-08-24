@@ -102,6 +102,7 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
+      const selectedAuthMethod = form.auth_method ?? "authentication_id";
       await onSubmit({
         ...form,
         id: form.id?.trim() || undefined,
@@ -113,7 +114,10 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
         auth_token_url: form.auth_token_url?.trim() || null,
         auth_login_path: form.auth_login_path?.trim() || null,
         auth_token_path: form.auth_token_path?.trim() || null,
-        auth_application_ids: form.auth_application_ids?.trim() || form.auth_client_id?.trim() || null,
+        auth_application_ids:
+          selectedAuthMethod === "authentication_id"
+            ? form.auth_application_ids?.trim() || form.auth_client_id?.trim() || null
+            : form.auth_application_ids?.trim() || null,
         auth_client_id: form.auth_client_id?.trim() || null,
         auth_client_secret: form.auth_client_secret?.trim() || null,
         auth_scope: form.auth_scope?.trim() || null,
@@ -137,6 +141,8 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
   const showOauthFields = authMethod === "oauth";
   const showOpenIdFields = authMethod === "openid";
   const showAuthenticationIdFields = authMethod === "authentication_id";
+  const callbackOrigin = (form.workbench_public_url || window.location.origin).replace(/\/$/, "");
+  const callbackUri = `${callbackOrigin}/api/auth/callback`;
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
@@ -219,7 +225,14 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
               select
               label="Server authentication setup"
               value={authMethod}
-              onChange={(event) => setField("auth_method", event.target.value as TWCServerAuthMethod)}
+              onChange={(event) => {
+                const nextMethod = event.target.value as TWCServerAuthMethod;
+                setForm((current) => ({
+                  ...current,
+                  auth_method: nextMethod,
+                  auth_scope: nextMethod === "oauth" ? null : nextMethod === "openid" ? current.auth_scope || "openid" : current.auth_scope || null,
+                }));
+              }}
               helperText="Choose the TWC sign-in/configuration method for this server. Settings here are the authority for Workbench."
               fullWidth
             >
@@ -234,7 +247,7 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
             <Accordion variant="outlined" disableGutters>
                 <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
                   <Typography fontWeight={700}>
-                    {showOauthFields ? "OAuth / OSLC setup" : "TWC auth link"}
+                    {showOauthFields ? "OAuth 2.0 client setup" : "TWC auth link"}
                   </Typography>
                 </AccordionSummary>
                 <AccordionDetails>
@@ -243,10 +256,17 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
                     <>
                   <Grid item xs={12}>
                     <Typography variant="body2" color="text.secondary">
-                      Workbench derives OpenID endpoints from the Teamwork Cloud Base URL using the standard <code>/authentication</code> paths. Only the TWC host:port, Workbench public host:port, Application ID(s), and secret should normally change.
+                      OpenID uses the client record from Teamwork Cloud Admin. Register this exact redirect URI in that client: <code>{callbackUri}</code>. After TWC saves the client, paste the generated OpenID Client ID below.
                     </Typography>
                   </Grid>
                     </>
+                  ) : null}
+                  {showOauthFields ? (
+                    <Grid item xs={12}>
+                      <Typography variant="body2" color="text.secondary">
+                        OAuth 2.0 uses the client record from Teamwork Cloud Admin. Register this exact redirect URI in that client: <code>{callbackUri}</code>. Workbench derives the AuthServer authorize/token paths from the Teamwork Cloud Base URL.
+                      </Typography>
+                    </Grid>
                   ) : null}
                   {showAuthenticationIdFields ? (
                     <>
@@ -257,18 +277,26 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
                       </Grid>
                     </>
                   ) : null}
-                  {showOpenIdFields || showAuthenticationIdFields ? (
+                  {showOpenIdFields || showAuthenticationIdFields || showOauthFields ? (
                     <>
                   <Grid item xs={12} md={6}>
                     <TextField
-                      label="Application ID(s)"
-                      value={form.auth_application_ids ?? form.auth_client_id ?? ""}
+                      label={showOauthFields ? "OAuth Client ID" : showOpenIdFields ? "OpenID Client ID" : "Application ID(s)"}
+                      value={showOauthFields || showOpenIdFields ? form.auth_client_id ?? "" : form.auth_application_ids ?? form.auth_client_id ?? ""}
                       onChange={(event) => {
-                        setField("auth_application_ids", event.target.value || null);
+                        if (showAuthenticationIdFields) {
+                          setField("auth_application_ids", event.target.value || null);
+                        }
                         setField("auth_client_id", event.target.value || null);
                       }}
-                      placeholder="twcworkbench"
-                      helperText="Matches the TWC Configs Application ID(s) value for this Workbench link."
+                      placeholder={showOauthFields || showOpenIdFields ? "Generated Client ID from TWC Admin" : "twcworkbench"}
+                      helperText={
+                        showOauthFields
+                          ? "Use the generated Client ID from TWC Admin > OAuth Clients > OAuth 2.0."
+                          : showOpenIdFields
+                            ? "Use the generated Client ID from TWC Admin > OAuth Clients > OpenID."
+                            : "Matches the TWC Configs Application ID(s) value for this Workbench link."
+                      }
                       fullWidth
                     />
                   </Grid>
@@ -277,19 +305,10 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
                   </Grid>
                     </>
                   ) : null}
-                  {showOauthFields ? (
+                  {showOauthFields || showOpenIdFields ? (
                     <>
                       <Grid item xs={12} md={6}>
-                        <TextField label="OSLC/OSMC Base URL" value={form.oslc_base_url ?? ""} onChange={(event) => setField("oslc_base_url", event.target.value || null)} helperText="Leave blank to use the TWC Base URL for /osmc requests." fullWidth />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <TextField label="OAuth callback URL" value={form.oslc_callback_url ?? ""} onChange={(event) => setField("oslc_callback_url", event.target.value || null)} fullWidth />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <TextField label="OAuth consumer key" value={form.oslc_consumer_key ?? ""} onChange={(event) => setField("oslc_consumer_key", event.target.value || null)} fullWidth />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <TextField label="OAuth consumer secret" type="password" value={form.oslc_consumer_secret ?? ""} onChange={(event) => setField("oslc_consumer_secret", event.target.value || null)} helperText="Saved on submit; not shown again after reload." fullWidth />
+                        <TextField label="Workbench redirect URI" value={callbackUri} helperText={`Copy this into the ${showOpenIdFields ? "OpenID" : "OAuth 2.0"} client Redirect URIs field.`} fullWidth InputProps={{ readOnly: true }} />
                       </Grid>
                     </>
                   ) : null}

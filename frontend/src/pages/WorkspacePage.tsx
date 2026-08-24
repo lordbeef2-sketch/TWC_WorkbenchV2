@@ -7033,6 +7033,21 @@ export default function WorkspacePage() {
     const newServerUsesOauth = newServerAuthMethod === "oauth";
     const newServerUsesOpenId = newServerAuthMethod === "openid";
     const newServerUsesAuthenticationId = newServerAuthMethod === "authentication_id";
+    const newServerCallbackOrigin = (newServerPreset.workbench_public_url || workbenchOrigin).replace(/\/$/, "");
+    const newServerCallbackUri = `${newServerCallbackOrigin}/api/auth/callback`;
+    const normalizeServerAuthPayload = (payload: ServerProfileInput): ServerProfileInput => {
+      const method = payload.auth_method ?? "authentication_id";
+      return {
+        ...payload,
+        auth_application_ids:
+          method === "authentication_id"
+            ? payload.auth_application_ids?.trim() || payload.auth_client_id?.trim() || null
+            : payload.auth_application_ids?.trim() || null,
+        auth_client_id: payload.auth_client_id?.trim() || null,
+        auth_client_secret: payload.auth_client_secret?.trim() || null,
+        auth_scope: payload.auth_scope?.trim() || null,
+      };
+    };
 
     return (
       <Paper sx={{ p: 3, borderRadius: 2 }}>
@@ -7146,6 +7161,12 @@ export default function WorkspacePage() {
                       setNewServerPreset((current) => ({
                         ...current,
                         auth_method: event.target.value as TWCServerAuthMethod,
+                        auth_scope:
+                          event.target.value === "oauth"
+                            ? null
+                            : event.target.value === "openid"
+                              ? current.auth_scope || "openid"
+                              : current.auth_scope || null,
                       }))
                     }
                     helperText="Controls which server auth fields are shown and saved."
@@ -7184,7 +7205,7 @@ export default function WorkspacePage() {
               <Accordion variant="outlined" disableGutters>
                   <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
                     <Typography fontWeight={700}>
-                      {newServerUsesOauth ? "OAuth / OSLC setup" : "TWC auth link"}
+                      {newServerUsesOauth ? "OAuth 2.0 client setup" : "TWC auth link"}
                     </Typography>
                   </AccordionSummary>
                   <AccordionDetails>
@@ -7193,7 +7214,7 @@ export default function WorkspacePage() {
                       <>
                     <Grid item xs={12}>
                       <Typography variant="body2" color="text.secondary">
-                        Workbench derives OpenID endpoints from the Teamwork Cloud Base URL using the standard <code>/authentication</code> paths. Only the TWC host:port, Workbench public host:port, Application ID(s), and secret should normally change.
+                        OpenID uses the client record from Teamwork Cloud Admin. Register this exact redirect URI in that client: <code>{newServerCallbackUri}</code>. After TWC saves the client, paste the generated OpenID Client ID below.
                       </Typography>
                     </Grid>
                       </>
@@ -7207,21 +7228,34 @@ export default function WorkspacePage() {
                     </Grid>
                       </>
                     ) : null}
-                    {newServerUsesOpenId || newServerUsesAuthenticationId ? (
+                    {newServerUsesOauth ? (
+                      <Grid item xs={12}>
+                        <Typography variant="body2" color="text.secondary">
+                          OAuth 2.0 uses the client record from Teamwork Cloud Admin. Register this exact redirect URI in that client: <code>{newServerCallbackUri}</code>. Workbench derives the AuthServer authorize/token paths from the Teamwork Cloud Base URL.
+                        </Typography>
+                      </Grid>
+                    ) : null}
+                    {newServerUsesOpenId || newServerUsesAuthenticationId || newServerUsesOauth ? (
                       <>
                     <Grid item xs={12} md={6}>
                       <TextField
-                        label="Application ID(s)"
-                        value={newServerPreset.auth_application_ids ?? newServerPreset.auth_client_id ?? ""}
+                        label={newServerUsesOauth ? "OAuth Client ID" : newServerUsesOpenId ? "OpenID Client ID" : "Application ID(s)"}
+                        value={newServerUsesOauth || newServerUsesOpenId ? newServerPreset.auth_client_id ?? "" : newServerPreset.auth_application_ids ?? newServerPreset.auth_client_id ?? ""}
                         onChange={(event) =>
                           setNewServerPreset((current) => ({
                             ...current,
-                            auth_application_ids: event.target.value || null,
+                            auth_application_ids: newServerUsesAuthenticationId ? event.target.value || null : current.auth_application_ids,
                             auth_client_id: event.target.value || null,
                           }))
                         }
-                        placeholder="twcworkbench"
-                        helperText="Matches the TWC Configs Application ID(s) value for this Workbench link."
+                        placeholder={newServerUsesOauth || newServerUsesOpenId ? "Generated Client ID from TWC Admin" : "twcworkbench"}
+                        helperText={
+                          newServerUsesOauth
+                            ? "Use the generated Client ID from TWC Admin > OAuth Clients > OAuth 2.0."
+                            : newServerUsesOpenId
+                              ? "Use the generated Client ID from TWC Admin > OAuth Clients > OpenID."
+                              : "Matches the TWC Configs Application ID(s) value for this Workbench link."
+                        }
                         fullWidth
                       />
                     </Grid>
@@ -7237,44 +7271,11 @@ export default function WorkspacePage() {
                     </Grid>
                       </>
                     ) : null}
-                    {newServerUsesOauth ? (
+                    {newServerUsesOauth || newServerUsesOpenId ? (
                       <>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        label="OAuth / OSLC base URL"
-                        value={newServerPreset.oslc_base_url ?? ""}
-                        onChange={(event) => setNewServerPreset((current) => ({ ...current, oslc_base_url: event.target.value || null }))}
-                        helperText="Leave blank to use the TWC Base URL for /osmc requests."
-                        placeholder="https://twc.example:8111"
-                        fullWidth
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        label="OAuth callback URL"
-                        value={newServerPreset.oslc_callback_url ?? ""}
-                        onChange={(event) => setNewServerPreset((current) => ({ ...current, oslc_callback_url: event.target.value || null }))}
-                        fullWidth
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        label="OAuth consumer key"
-                        value={newServerPreset.oslc_consumer_key ?? ""}
-                        onChange={(event) => setNewServerPreset((current) => ({ ...current, oslc_consumer_key: event.target.value || null }))}
-                        fullWidth
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        label="OAuth consumer secret"
-                        type="password"
-                        value={newServerPreset.oslc_consumer_secret ?? ""}
-                        onChange={(event) => setNewServerPreset((current) => ({ ...current, oslc_consumer_secret: event.target.value || null }))}
-                        helperText="Saved on submit; not shown again after reload."
-                        fullWidth
-                      />
-                    </Grid>
+                        <Grid item xs={12} md={6}>
+                          <TextField label="Workbench redirect URI" value={newServerCallbackUri} helperText={`Copy this into the ${newServerUsesOpenId ? "OpenID" : "OAuth 2.0"} client Redirect URIs field.`} fullWidth InputProps={{ readOnly: true }} />
+                        </Grid>
                       </>
                     ) : null}
                   </Grid>
@@ -7283,7 +7284,7 @@ export default function WorkspacePage() {
               <Button
                 variant="contained"
                 disabled={!csrfToken || !(newServerPreset.id ?? "").trim() || !newServerPreset.name.trim() || !newServerPreset.base_url.trim() || createServerMutation.isPending}
-                onClick={() => createServerMutation.mutate({ ...newServerPreset, id: (newServerPreset.id ?? "").trim(), display_order: servers.length })}
+                onClick={() => createServerMutation.mutate(normalizeServerAuthPayload({ ...newServerPreset, id: (newServerPreset.id ?? "").trim(), display_order: servers.length }))}
               >
                 Add Server
               </Button>
@@ -7325,6 +7326,8 @@ export default function WorkspacePage() {
                 const draftUsesOauth = draftAuthMethod === "oauth";
                 const draftUsesOpenId = draftAuthMethod === "openid";
                 const draftUsesAuthenticationId = draftAuthMethod === "authentication_id";
+                const draftCallbackOrigin = (draft.workbench_public_url || workbenchOrigin).replace(/\/$/, "");
+                const draftCallbackUri = `${draftCallbackOrigin}/api/auth/callback`;
                 return (
                   <Paper key={server.id} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
                     <Stack spacing={1.5}>
@@ -7449,6 +7452,12 @@ export default function WorkspacePage() {
                                 [server.id]: {
                                   ...draft,
                                   auth_method: event.target.value as TWCServerAuthMethod,
+                                  auth_scope:
+                                    event.target.value === "oauth"
+                                      ? null
+                                      : event.target.value === "openid"
+                                        ? draft.auth_scope || "openid"
+                                        : draft.auth_scope || null,
                                 },
                               }))
                             }
@@ -7471,7 +7480,7 @@ export default function WorkspacePage() {
                       <Accordion variant="outlined" disableGutters>
                           <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />}>
                             <Typography fontWeight={700}>
-                              {draftUsesOauth ? "OAuth / OSLC setup" : "TWC auth link"}
+                              {draftUsesOauth ? "OAuth 2.0 client setup" : "TWC auth link"}
                             </Typography>
                           </AccordionSummary>
                           <AccordionDetails>
@@ -7480,7 +7489,7 @@ export default function WorkspacePage() {
                               <>
                             <Grid item xs={12}>
                               <Typography variant="body2" color="text.secondary">
-                                Workbench derives OpenID endpoints from the Teamwork Cloud Base URL using the standard <code>/authentication</code> paths. Only the TWC host:port, Workbench public host:port, Application ID(s), and secret should normally change.
+                                OpenID uses the client record from Teamwork Cloud Admin. Register this exact redirect URI in that client: <code>{draftCallbackUri}</code>. After TWC saves the client, paste the generated OpenID Client ID below.
                               </Typography>
                             </Grid>
                               </>
@@ -7494,24 +7503,37 @@ export default function WorkspacePage() {
                             </Grid>
                               </>
                             ) : null}
-                            {draftUsesOpenId || draftUsesAuthenticationId ? (
+                            {draftUsesOauth ? (
+                              <Grid item xs={12}>
+                                <Typography variant="body2" color="text.secondary">
+                                  OAuth 2.0 uses the client record from Teamwork Cloud Admin. Register this exact redirect URI in that client: <code>{draftCallbackUri}</code>. Workbench derives the AuthServer authorize/token paths from the Teamwork Cloud Base URL.
+                                </Typography>
+                              </Grid>
+                            ) : null}
+                            {draftUsesOpenId || draftUsesAuthenticationId || draftUsesOauth ? (
                               <>
                             <Grid item xs={12} md={6}>
                       <TextField
-                        label="Application ID(s)"
-                        value={draft.auth_application_ids ?? draft.auth_client_id ?? ""}
+                        label={draftUsesOauth ? "OAuth Client ID" : draftUsesOpenId ? "OpenID Client ID" : "Application ID(s)"}
+                        value={draftUsesOauth || draftUsesOpenId ? draft.auth_client_id ?? "" : draft.auth_application_ids ?? draft.auth_client_id ?? ""}
                                 onChange={(event) =>
                                   setServerPresetDrafts((current) => ({
                                     ...current,
                                     [server.id]: {
                                       ...draft,
-                                      auth_application_ids: event.target.value || null,
+                                      auth_application_ids: draftUsesAuthenticationId ? event.target.value || null : draft.auth_application_ids,
                                       auth_client_id: event.target.value || null,
                                     },
                                   }))
                                 }
-                                placeholder="twcworkbench"
-                                helperText="Matches the TWC Configs Application ID(s) value for this Workbench link."
+                                placeholder={draftUsesOauth || draftUsesOpenId ? "Generated Client ID from TWC Admin" : "twcworkbench"}
+                                helperText={
+                                  draftUsesOauth
+                                    ? "Use the generated Client ID from TWC Admin > OAuth Clients > OAuth 2.0."
+                                    : draftUsesOpenId
+                                      ? "Use the generated Client ID from TWC Admin > OAuth Clients > OpenID."
+                                      : "Matches the TWC Configs Application ID(s) value for this Workbench link."
+                                }
                                 fullWidth
                               />
                             </Grid>
@@ -7532,63 +7554,11 @@ export default function WorkspacePage() {
                             </Grid>
                               </>
                             ) : null}
-                            {draftUsesOauth ? (
+                            {draftUsesOauth || draftUsesOpenId ? (
                               <>
-                            <Grid item xs={12} md={6}>
-                              <TextField
-                                label="OAuth / OSLC base URL"
-                                value={draft.oslc_base_url ?? ""}
-                                onChange={(event) =>
-                                  setServerPresetDrafts((current) => ({
-                                    ...current,
-                                    [server.id]: { ...draft, oslc_base_url: event.target.value || null },
-                                  }))
-                                }
-                                helperText="Leave blank to use the TWC Base URL for /osmc requests."
-                                fullWidth
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                              <TextField
-                                label="OAuth callback URL"
-                                value={draft.oslc_callback_url ?? ""}
-                                onChange={(event) =>
-                                  setServerPresetDrafts((current) => ({
-                                    ...current,
-                                    [server.id]: { ...draft, oslc_callback_url: event.target.value || null },
-                                  }))
-                                }
-                                fullWidth
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                              <TextField
-                                label="OAuth consumer key"
-                                value={draft.oslc_consumer_key ?? ""}
-                                onChange={(event) =>
-                                  setServerPresetDrafts((current) => ({
-                                    ...current,
-                                    [server.id]: { ...draft, oslc_consumer_key: event.target.value || null },
-                                  }))
-                                }
-                                fullWidth
-                              />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                              <TextField
-                                label="OAuth consumer secret"
-                                type="password"
-                                value={draft.oslc_consumer_secret ?? ""}
-                                onChange={(event) =>
-                                  setServerPresetDrafts((current) => ({
-                                    ...current,
-                                    [server.id]: { ...draft, oslc_consumer_secret: event.target.value || null },
-                                  }))
-                                }
-                                helperText="Leave blank to keep the saved secret unchanged; enter a value only to set or rotate it."
-                                fullWidth
-                              />
-                            </Grid>
+                                <Grid item xs={12} md={6}>
+                                  <TextField label="Workbench redirect URI" value={draftCallbackUri} helperText={`Copy this into the ${draftUsesOpenId ? "OpenID" : "OAuth 2.0"} client Redirect URIs field.`} fullWidth InputProps={{ readOnly: true }} />
+                                </Grid>
                               </>
                             ) : null}
                           </Grid>
@@ -7620,7 +7590,7 @@ export default function WorkspacePage() {
                         <Button
                           variant="contained"
                           disabled={!csrfToken || !draft.name.trim() || !draft.base_url.trim() || serverBusy}
-                          onClick={() => updateServerMutation.mutate({ serverId: server.id, payload: draft })}
+                          onClick={() => updateServerMutation.mutate({ serverId: server.id, payload: normalizeServerAuthPayload(draft) })}
                         >
                           Save Server
                         </Button>

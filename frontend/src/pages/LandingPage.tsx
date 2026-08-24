@@ -419,7 +419,7 @@ export default function LandingPage() {
                     This deployment exposes Teamwork Cloud presets before login so users can choose the configured server first. Workbench local users bind to the selected server and see only projects already granted to that username in stored permission snapshots.
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Configure each server in Settings with the matching auth lane. Authentication ID uses AuthServer Application ID(s), <code>/authentication/authorize</code>, <code>/authentication/api/token</code>, and <code>X-Auth-Secret</code>. OpenID is available for 2024x OpenID setups. OAuth is reserved for OSLC/RealSwagger consumer configuration.
+                    Configure each server in Settings with the matching auth lane. Authentication ID uses AuthServer Application ID(s), <code>/authentication/authorize</code>, <code>/authentication/api/token</code>, and <code>X-Auth-Secret</code>. OAuth 2.0 uses the TWC Admin OAuth client ID/secret and the Workbench callback <code>/api/auth/callback</code>. OpenID is available for 2024x OpenID setups.
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Use TWC Token remains available as a fallback. The backend validates that token against the selected Teamwork Cloud server before opening a workbench session.

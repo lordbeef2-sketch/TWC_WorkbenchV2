@@ -225,6 +225,30 @@ class AuthenticationSourceTruthTests(unittest.TestCase):
             TWCServerAuthMethod.OAUTH,
         )
 
+    def test_oauth2_signin_uses_workbench_callback_and_twc_oauth_client_id(self) -> None:
+        settings = Settings(app_origin="http://localhost:8000", twc_auth_client_secret="client-secret")
+        server = ServerProfile(
+            id="twc-2024x",
+            name="TWC 2024x",
+            base_url="https://yw4-ylvap83835.northgrum.com:8443",
+            workbench_public_url="https://tx22svaw6159.northgrum.com:8050",
+            auth_method=TWCServerAuthMethod.OAUTH,
+            auth_application_ids="twcworkbench",
+            auth_client_id="1419ad33-7951-4fa2-96ab-8c38cfc1d085",
+        )
+
+        url, config = asyncio.run(build_twc_signin_url(SimpleNamespace(settings=settings), server, "state-value"))
+        query = parse_qs(urlparse(url).query)
+
+        self.assertEqual(urlparse(url).netloc, "yw4-ylvap83835.northgrum.com:8443")
+        self.assertEqual(urlparse(url).path, "/authentication/authorize")
+        self.assertEqual(query["client_id"], ["1419ad33-7951-4fa2-96ab-8c38cfc1d085"])
+        self.assertEqual(query["redirect_uri"], ["https://tx22svaw6159.northgrum.com:8050/api/auth/callback"])
+        self.assertNotIn("scope", query)
+        self.assertEqual(config["token_endpoint"], "https://yw4-ylvap83835.northgrum.com:8443/authentication/api/token")
+        self.assertEqual(config["token_secret_transport"], "client-secret-basic")
+        self.assertEqual(config["source"], "twc-oauth2-client")
+
     def test_oslc_base_url_override_is_used_for_osmc_candidates_only(self) -> None:
         adapter = object.__new__(TeamworkAdapter)
         adapter.context = SimpleNamespace(

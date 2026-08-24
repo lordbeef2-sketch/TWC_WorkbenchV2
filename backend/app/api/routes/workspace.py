@@ -874,6 +874,8 @@ async def sync_workbench_agent_knowledge(
 ):
     try:
         return container.platform.submit_workbench_agent_knowledge_sync(session, payload.project_id, payload.branch_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -888,6 +890,8 @@ async def workbench_agent_chat(
 ):
     try:
         return await container.platform.run_workbench_agent_chat(session, payload)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except RuntimeError as exc:

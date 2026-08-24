@@ -36,6 +36,16 @@ def _server_auth_value(server, field_name: str) -> Any | None:
 
 def _auth_client_id(settings: Settings, server) -> str | None:
     override = _auth_override(settings, server)
+    auth_method = _server_auth_method(server)
+    if auth_method in {TWCServerAuthMethod.OAUTH, TWCServerAuthMethod.OPENID}:
+        return (
+            _server_auth_value(server, "auth_client_id")
+            or _server_auth_value(server, "auth_application_ids")
+            or (override.client_id if override and override.client_id else None)
+            or (override.application_ids if override and override.application_ids else None)
+            or settings.resolved_twc_auth_client_id
+            or "twcworkbench"
+        )
     return (
         _server_auth_value(server, "auth_application_ids")
         or _server_auth_value(server, "auth_client_id")
@@ -57,6 +67,8 @@ def _auth_client_secret(settings: Settings, server) -> str | None:
 
 def _auth_scope(settings: Settings, server) -> str | None:
     override = _auth_override(settings, server)
+    if _server_auth_method(server) == TWCServerAuthMethod.OAUTH:
+        return _server_auth_value(server, "auth_scope") or (override.scope if override and override.scope else None)
     return _server_auth_value(server, "auth_scope") or (override.scope if override and override.scope else None) or settings.twc_auth_scope
 
 
@@ -343,6 +355,15 @@ async def build_twc_authentication_id_signin_url(container: ApplicationContainer
     }
 
 
+async def build_twc_oauth2_signin_url(container: ApplicationContainer, server, state: str) -> tuple[str, dict[str, Any]]:
+    return build_twc_authentication_id_authorization_url(container, server, state), {
+        "authorization_endpoint": _build_twc_authentication_id_authorize_base_url(container.settings, server),
+        "token_endpoint": _build_twc_authentication_id_token_url(container.settings, server),
+        "token_secret_transport": "client-secret-basic",
+        "source": "twc-oauth2-client",
+    }
+
+
 async def build_twc_oidc_signin_url(container: ApplicationContainer, server, state: str) -> tuple[str, dict[str, Any]]:
     configuration = await resolve_twc_oidc_configuration(container.settings, server)
     url = build_twc_oidc_authorization_url(container, server, state)
@@ -363,7 +384,9 @@ async def build_twc_signin_url(container: ApplicationContainer, server, state: s
         if str(version).strip().lower() == "2022x":
             raise ValueError("OpenID setup is not available for Teamwork Cloud 2022x servers. Use Authentication ID method.")
         return await build_twc_oidc_signin_url(container, server, state)
-    raise ValueError("OAuth / OSLC setup is not a Workbench browser sign-in lane. Use Authentication ID method or OpenID for sign-in.")
+    if auth_method == TWCServerAuthMethod.OAUTH:
+        return await build_twc_oauth2_signin_url(container, server, state)
+    raise ValueError("Unsupported Teamwork Cloud authentication method.")
 
 
 def infer_token_expiry(token: str | None) -> datetime | None:
@@ -444,8 +467,16 @@ async def _request_authserver_tokens(
         }
         token_url = str(configuration["token_endpoint"])
         token_method = "x_auth_secret"
+    elif auth_method == TWCServerAuthMethod.OAUTH:
+        configuration = {
+            "token_endpoint": _build_twc_authentication_id_token_url(settings, server),
+            "token_secret_transport": "client-secret-basic",
+            "source": "twc-oauth2-client",
+        }
+        token_url = str(configuration["token_endpoint"])
+        token_method = "client_secret_basic"
     else:
-        raise PermissionError("OAuth / OSLC setup cannot exchange a Workbench browser sign-in code.")
+        raise PermissionError("Unsupported Teamwork Cloud authentication method.")
     verify = server.ca_bundle_path if server.verify_tls and server.ca_bundle_path else server.verify_tls
     async with httpx.AsyncClient(timeout=20.0, verify=verify, follow_redirects=True) as client:
         if token_method == "client_secret_basic":
