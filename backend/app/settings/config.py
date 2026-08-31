@@ -26,7 +26,7 @@ class TWCAuthServerOverride(BaseModel):
     client_id: str | None = None
     client_secret: str | None = None
     scope: str | None = None
-    token_auth_method: Literal["client_secret_basic"] | None = None
+    token_auth_method: Literal["client_secret_basic", "x_auth_secret"] | None = None
     return_url_parameter: str | None = None
 
     @model_validator(mode="before")
@@ -125,13 +125,13 @@ class Settings(BaseSettings):
     twc_auth_state_ttl_minutes: int = 15
     twc_auth_server_overrides: dict[str, TWCAuthServerOverride] = Field(default_factory=dict)
     twc_oidc_discovery_url: str | None = None
-    twc_oidc_discovery_path: str = "/authentication/.well-known/oidc-configuration"
+    twc_oidc_discovery_path: str = "/authentication/.well-known/openid-configuration"
     twc_oidc_authorize_url: str | None = None
-    twc_oidc_authorize_path: str = "/authentication/oidc/authorize"
+    twc_oidc_authorize_path: str = "/authentication/authorize"
     twc_oidc_token_url: str | None = None
-    twc_oidc_token_path: str = "/authentication/api/oidc/token"
+    twc_oidc_token_path: str = "/authentication/api/token"
     twc_oidc_port: int | None = None
-    twc_oidc_token_auth_method: Literal["client_secret_basic"] = "client_secret_basic"
+    twc_oidc_token_auth_method: Literal["client_secret_basic", "x_auth_secret"] = "x_auth_secret"
     twc_oidc_return_url_parameter: str = "redirect_uri"
     session_ttl_minutes: int = 480
     permission_snapshot_refresh_minutes: int = Field(default=30, ge=1)
@@ -228,21 +228,21 @@ class Settings(BaseSettings):
     @classmethod
     def blank_oidc_discovery_path_to_default(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
-            return "/authentication/.well-known/oidc-configuration"
+            return "/authentication/.well-known/openid-configuration"
         return value
 
     @field_validator("twc_oidc_authorize_path", mode="before")
     @classmethod
     def blank_oidc_authorize_path_to_default(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
-            return "/authentication/oidc/authorize"
+            return "/authentication/authorize"
         return value
 
     @field_validator("twc_oidc_token_path", mode="before")
     @classmethod
     def blank_oidc_token_path_to_default(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
-            return "/authentication/api/oidc/token"
+            return "/authentication/api/token"
         return value
 
     @field_validator("fallback_cache_sync_time")

@@ -9,13 +9,13 @@ The numbered scripts are now thin examples around the reusable Python functions 
 import from other Python code instead of copying request logic into each script.
 
 Everything here reads from [config.json](config.json)
-and uses the same official 2024x Refresh3 OIDC pattern as the app:
+and uses the same 2024x Teamwork Cloud AuthServer OpenID pattern as the app:
 
-1. read `/authentication/.well-known/oidc-configuration`,
-2. open the discovered OIDC authorization endpoint and complete login,
+1. read `/authentication/.well-known/openid-configuration`,
+2. open the discovered OpenID authorization endpoint and complete login,
 3. receive an authorization code on the local callback,
 4. exchange that code at the discovered token endpoint using the registered
-   client ID and secret with `client_secret_basic`,
+   client ID and secret with `X-Auth-Secret` by default,
 5. call `/osmc/...` with `Authorization: Token <id_token>`.
 
 For Workbench-local API variable names, selectors, headers, and common calling
@@ -133,9 +133,9 @@ python .\19_nomagic_openapi_project_summary.py
 
 These examples cover the hardcoded REST calls used by the app and extractor:
 
-- `/authentication/.well-known/oidc-configuration`
-- `/authentication/oidc/authorize`
-- `/authentication/api/oidc/token`
+- `/authentication/.well-known/openid-configuration`
+- `/authentication/authorize`
+- `/authentication/api/token`
 - `/osmc/admin/currentUser?permission=true`
 - `/osmc/version`
 - `/osmc/workspaces?includeBody=true`

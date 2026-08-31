@@ -5,15 +5,15 @@ This file records what Workbench may claim and implement from the bundled 3DS
 2024x source package. It prevents implementation details from being mistaken
 for product documentation.
 
-## Documented by official 2024x Refresh3 sources
+## Documented by official 2024x sources
 
 The Developer Guide page `OpenID Connect authentication` documents the 2024x
 OpenID web-application contract:
 
-- Discovery: `/authentication/.well-known/oidc-configuration`
-- Authorization endpoint: `/authentication/oidc/authorize`
-- Token endpoint: `/authentication/api/oidc/token`
-- Token endpoint authentication: `client_secret_basic`
+- Discovery: `/authentication/.well-known/openid-configuration`
+- Authorization endpoint: `/authentication/authorize`
+- Token endpoint: `/authentication/api/token`
+- Token endpoint authentication: `X-Auth-Secret`
 - Supported scope: `openid`
 - Supported grants include `authorization_code` and `refresh_token`
 - OIDC clients are registered under Web Application Platform Settings ->

@@ -145,7 +145,7 @@ def _build_twc_authorize_base_url(settings: Settings, server) -> str:
         login_port = (override.login_port if override and override.login_port is not None else None)
     if login_port is None:
         login_port = settings.twc_oidc_port
-    return build_twc_auth_server_url(settings, server, login_path or "/authentication/oidc/authorize", port=login_port)
+    return build_twc_auth_server_url(settings, server, login_path or "/authentication/authorize", port=login_port)
 
 
 def _build_twc_authentication_id_authorize_base_url(settings: Settings, server) -> str:
@@ -188,14 +188,14 @@ def _build_twc_token_url(settings: Settings, server) -> str:
         or settings.twc_oidc_authorize_url
     )
     if authorize_url:
-        return _url_with_path(authorize_url, token_path or "/authentication/api/oidc/token")
+        return _url_with_path(authorize_url, token_path or "/authentication/api/token")
 
     login_port = _server_auth_value(server, "auth_login_port")
     if login_port is None:
         login_port = (override.login_port if override and override.login_port is not None else None)
     if login_port is None:
         login_port = settings.twc_oidc_port
-    return build_twc_auth_server_url(settings, server, token_path or "/authentication/api/oidc/token", port=login_port)
+    return build_twc_auth_server_url(settings, server, token_path or "/authentication/api/token", port=login_port)
 
 
 def _build_twc_authentication_id_token_url(settings: Settings, server) -> str:
@@ -239,10 +239,10 @@ def _build_twc_discovery_url(settings: Settings, server) -> str:
 
 
 async def resolve_twc_oidc_configuration(settings: Settings, server) -> dict[str, Any]:
-    """Resolve the 2024x Refresh3 OIDC endpoints from AuthServer discovery.
+    """Resolve the 2024x AuthServer OpenID endpoints from discovery.
 
     Explicit per-server URLs remain authoritative. If discovery is unavailable,
-    the documented 2024x Refresh3 endpoint paths are used as a bounded fallback.
+    the documented 2024x AuthServer endpoint paths are used as a bounded fallback.
     """
     override = _auth_override(settings, server)
     explicit_authorize = (
@@ -261,7 +261,7 @@ async def resolve_twc_oidc_configuration(settings: Settings, server) -> dict[str
         "token_endpoint_auth_methods_supported": [_auth_token_method(settings, server)],
         "scopes_supported": ["openid"],
         "discovery_endpoint": _build_twc_discovery_url(settings, server),
-        "source": "explicit" if explicit_authorize and explicit_token else "documented-2024x-r3-default",
+        "source": "explicit" if explicit_authorize and explicit_token else "documented-2024x-authserver-default",
     }
     if explicit_authorize and explicit_token:
         return configuration

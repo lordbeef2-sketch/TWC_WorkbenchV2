@@ -256,7 +256,7 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
                     <>
                   <Grid item xs={12}>
                     <Typography variant="body2" color="text.secondary">
-                      OpenID uses the client record from Teamwork Cloud Admin. Register this exact redirect URI in that client: <code>{callbackUri}</code>. After TWC saves the client, paste the generated OpenID Client ID below.
+                      OpenID uses the Teamwork Cloud AuthServer endpoints <code>/authentication/authorize</code> and <code>/authentication/api/token</code>. Register this exact redirect URI in the OpenID client: <code>{callbackUri}</code>. After TWC saves the client, paste the generated OpenID Client ID below.
                     </Typography>
                   </Grid>
                     </>
@@ -264,7 +264,7 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
                   {showOauthFields ? (
                     <Grid item xs={12}>
                       <Typography variant="body2" color="text.secondary">
-                        OAuth 2.0 uses the client record from Teamwork Cloud Admin. Register this exact redirect URI in that client: <code>{callbackUri}</code>. Workbench derives the AuthServer authorize/token paths from the Teamwork Cloud Base URL.
+                        OAuth 2.0 uses the Teamwork Cloud AuthServer endpoints <code>/authentication/authorize</code> and <code>/authentication/api/token</code>. Register this exact redirect URI in the OAuth 2.0 client: <code>{callbackUri}</code>.
                       </Typography>
                     </Grid>
                   ) : null}

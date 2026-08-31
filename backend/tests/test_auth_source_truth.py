@@ -5,7 +5,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from datetime import datetime
 import asyncio
-import base64
 import sqlite3
 import unittest
 from unittest.mock import patch
@@ -263,16 +262,16 @@ class AuthenticationSourceTruthTests(unittest.TestCase):
         self.assertEqual(adapter._candidate_url("/osmc/resources"), "https://oslc.example:9443/osmc/resources")
         self.assertEqual(adapter._candidate_url("/authentication/session"), "https://twc.example:8111/authentication/session")
 
-    def test_2024x_oidc_defaults_use_refresh3_discovery_and_token_paths(self) -> None:
+    def test_2024x_openid_defaults_use_authserver_documented_paths(self) -> None:
         settings = Settings()
 
-        self.assertEqual(settings.twc_oidc_discovery_path, "/authentication/.well-known/oidc-configuration")
-        self.assertEqual(settings.twc_oidc_authorize_path, "/authentication/oidc/authorize")
-        self.assertEqual(settings.twc_oidc_token_path, "/authentication/api/oidc/token")
-        self.assertEqual(settings.twc_oidc_token_auth_method, "client_secret_basic")
+        self.assertEqual(settings.twc_oidc_discovery_path, "/authentication/.well-known/openid-configuration")
+        self.assertEqual(settings.twc_oidc_authorize_path, "/authentication/authorize")
+        self.assertEqual(settings.twc_oidc_token_path, "/authentication/api/token")
+        self.assertEqual(settings.twc_oidc_token_auth_method, "x_auth_secret")
         self.assertEqual(settings.twc_auth_scope, "openid")
 
-    def test_code_exchange_uses_discovered_oidc_endpoint_and_client_secret_basic(self) -> None:
+    def test_code_exchange_uses_discovered_openid_endpoint_and_x_auth_secret(self) -> None:
         calls: list[tuple[str, object]] = []
 
         class FakeResponse:
@@ -298,9 +297,8 @@ class AuthenticationSourceTruthTests(unittest.TestCase):
                 calls.append(("get", url))
                 return FakeResponse(
                     {
-                        "authorization_endpoint": "https://auth.example/authentication/oidc/authorize",
-                        "token_endpoint": "https://auth.example/authentication/api/oidc/token",
-                        "token_endpoint_auth_methods_supported": ["client_secret_basic"],
+                        "authorization_endpoint": "https://auth.example/authentication/authorize",
+                        "token_endpoint": "https://auth.example/authentication/api/token",
                         "scopes_supported": ["openid"],
                     }
                 )
@@ -326,10 +324,8 @@ class AuthenticationSourceTruthTests(unittest.TestCase):
             bundle = asyncio.run(exchange_twc_auth_code(container, server, "code-value"))
 
         post = next(value for method, value in calls if method == "post")
-        self.assertEqual(post["url"], "https://auth.example/authentication/api/oidc/token")
-        request = next(post["auth"].auth_flow(httpx.Request("POST", post["url"])))
-        expected = base64.b64encode(b"client-id:client-secret").decode("ascii")
-        self.assertEqual(request.headers["Authorization"], f"Basic {expected}")
+        self.assertEqual(post["url"], "https://auth.example/authentication/api/token")
+        self.assertEqual(post["headers"], {"X-Auth-Secret": "client-secret"})
         self.assertEqual(post["data"]["scope"], "openid")
         self.assertEqual(bundle.access_token, "header.payload.signature")
 
@@ -1369,8 +1365,7 @@ class AuthenticationSourceTruthTests(unittest.TestCase):
         self.assertFalse(hasattr(settings, "twc_saml_authorize_url"))
         self.assertFalse(hasattr(settings, "twc_saml_token_url"))
         self.assertNotIn("TWC_SAML_", env_example)
-        with self.assertRaises(ValueError):
-            Settings(twc_oidc_token_auth_method="x_auth_secret")
+        self.assertEqual(Settings(twc_oidc_token_auth_method="x_auth_secret").twc_oidc_token_auth_method, "x_auth_secret")
 
     def test_rest_model_crawler_routes_are_not_exposed(self) -> None:
         paths = {route.path for route in workspace.router.routes}
