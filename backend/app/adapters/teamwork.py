@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlparse, urlunparse
 from uuid import uuid4
 
 import httpx
@@ -946,7 +946,20 @@ class TeamworkAdapter:
         oslc_base_url = (self.context.server.oslc_base_url or "").strip()
         if oslc_base_url and candidate.startswith("/osmc/"):
             base_url = oslc_base_url
+        elif candidate.startswith("/osmc/"):
+            base_url = self._rest_base_url_for_osmc(base_url)
         return f"{base_url.rstrip('/')}{candidate}"
+
+    def _rest_base_url_for_osmc(self, base_url: str) -> str:
+        """Keep Teamwork Cloud AuthServer and REST/OSMC traffic on their proper lanes."""
+        parsed = urlparse(base_url)
+        if parsed.scheme not in {"http", "https"} or parsed.port != 8443 or not parsed.hostname:
+            return base_url
+        host = parsed.hostname
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        netloc = f"{host}:8111"
+        return urlunparse((parsed.scheme, netloc, parsed.path.rstrip("/"), "", "", ""))
 
     def _candidate_path(self, candidate: str) -> str:
         if candidate.startswith(("http://", "https://")):

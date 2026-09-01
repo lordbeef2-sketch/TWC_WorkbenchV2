@@ -119,7 +119,7 @@ function createServerProfileDraft(overrides: Partial<ServerProfileInput> = {}): 
     auth_authorize_url: null,
     auth_token_url: null,
     auth_login_path: null,
-    auth_login_port: null,
+    auth_login_port: 8443,
     auth_token_path: null,
     auth_application_ids: "twcworkbench",
     auth_client_id: "twcworkbench",
@@ -132,6 +132,14 @@ function createServerProfileDraft(overrides: Partial<ServerProfileInput> = {}): 
     oslc_callback_url: null,
     ...overrides,
   };
+}
+
+function clientIdForAuthMethod(value: string | null | undefined, authMethod: TWCServerAuthMethod): string | null {
+  const trimmed = value?.trim() ?? "";
+  if (authMethod !== "authentication_id" && trimmed.toLowerCase() === "twcworkbench") {
+    return null;
+  }
+  return trimmed || (authMethod === "authentication_id" ? "twcworkbench" : null);
 }
 
 const WORKSPACE_TABS: WorkspaceTab[] = ["dashboard", "projects", "models", "search", "diagram-viewer", "compare", "agent", "developer", "api", "settings"];
@@ -2802,12 +2810,13 @@ export default function WorkspacePage() {
     setServerPresetDrafts((current) => {
       const next: Record<string, ServerProfileInput> = {};
       for (const server of managedServersQuery.data) {
+        const authMethod = server.auth_method ?? "authentication_id";
         next[server.id] = current[server.id] ?? createServerProfileDraft({
           name: server.name,
           base_url: server.base_url,
           workbench_public_url: server.workbench_public_url,
           version: server.version,
-          auth_method: server.auth_method ?? "authentication_id",
+          auth_method: authMethod,
           verify_tls: server.verify_tls,
           ca_bundle_path: server.ca_bundle_path,
           enabled: server.enabled,
@@ -2816,10 +2825,10 @@ export default function WorkspacePage() {
           auth_authorize_url: server.auth_authorize_url,
           auth_token_url: server.auth_token_url,
           auth_login_path: server.auth_login_path,
-          auth_login_port: server.auth_login_port,
+          auth_login_port: server.auth_login_port ?? 8443,
           auth_token_path: server.auth_token_path,
-          auth_application_ids: server.auth_application_ids ?? server.auth_client_id ?? "twcworkbench",
-          auth_client_id: server.auth_client_id ?? "twcworkbench",
+          auth_application_ids: server.auth_application_ids ?? (authMethod === "authentication_id" ? server.auth_client_id ?? "twcworkbench" : "twcworkbench"),
+          auth_client_id: clientIdForAuthMethod(server.auth_client_id, authMethod),
           auth_client_secret: null,
           auth_scope: server.auth_scope ?? "openid",
           auth_return_url_parameter: server.auth_return_url_parameter ?? "redirect_uri",
@@ -7098,10 +7107,10 @@ export default function WorkspacePage() {
                 </Grid>
                 <Grid item xs={12} md={3}>
                   <TextField
-                    label="Base URL"
+                    label="Teamwork Cloud REST / OSMC URL"
                     value={newServerPreset.base_url}
                     onChange={(event) => setNewServerPreset((current) => ({ ...current, base_url: event.target.value }))}
-                    helperText="Example: https://twc2024.company.com:8111"
+                    helperText="REST/OSMC endpoint. Example: https://twc2024.company.com:8111"
                     fullWidth
                   />
                 </Grid>
@@ -7134,7 +7143,10 @@ export default function WorkspacePage() {
                         auth_method: version === "2022x" && current.auth_method === "openid" ? "authentication_id" : current.auth_method,
                         auth_scope: version === "2022x" ? current.auth_scope || null : current.auth_scope || "openid",
                         auth_application_ids: current.auth_application_ids || current.auth_client_id || "twcworkbench",
-                        auth_client_id: current.auth_client_id || "twcworkbench",
+                        auth_client_id: clientIdForAuthMethod(
+                          current.auth_client_id,
+                          version === "2022x" && current.auth_method === "openid" ? "authentication_id" : current.auth_method ?? "authentication_id",
+                        ),
                       }));
                     }}
                     fullWidth
@@ -7161,6 +7173,11 @@ export default function WorkspacePage() {
                       setNewServerPreset((current) => ({
                         ...current,
                         auth_method: event.target.value as TWCServerAuthMethod,
+                        auth_application_ids:
+                          event.target.value === "authentication_id"
+                            ? current.auth_application_ids || current.auth_client_id || "twcworkbench"
+                            : current.auth_application_ids || "twcworkbench",
+                        auth_client_id: clientIdForAuthMethod(current.auth_client_id, event.target.value as TWCServerAuthMethod),
                         auth_scope:
                           event.target.value === "oauth"
                             ? null
@@ -7269,6 +7286,21 @@ export default function WorkspacePage() {
                         fullWidth
                       />
                     </Grid>
+                    <Grid item xs={12} md={3}>
+                      <TextField
+                        label="AuthServer port"
+                        type="number"
+                        value={newServerPreset.auth_login_port ?? 8443}
+                        onChange={(event) =>
+                          setNewServerPreset((current) => ({
+                            ...current,
+                            auth_login_port: event.target.value ? Number(event.target.value) : null,
+                          }))
+                        }
+                        helperText="Default TWC SSO port is 8443."
+                        fullWidth
+                      />
+                    </Grid>
                       </>
                     ) : null}
                     {newServerUsesOauth || newServerUsesOpenId ? (
@@ -7295,12 +7327,13 @@ export default function WorkspacePage() {
           <Stack spacing={1.5}>
             {servers.length ? (
               servers.map((server: ServerProfile) => {
+                const serverAuthMethod = server.auth_method ?? "authentication_id";
                 const draft = serverPresetDrafts[server.id] ?? createServerProfileDraft({
                   name: server.name,
                   base_url: server.base_url,
                   workbench_public_url: server.workbench_public_url,
                   version: server.version,
-                  auth_method: server.auth_method ?? "authentication_id",
+                  auth_method: serverAuthMethod,
                   verify_tls: server.verify_tls,
                   ca_bundle_path: server.ca_bundle_path,
                   enabled: server.enabled,
@@ -7309,10 +7342,10 @@ export default function WorkspacePage() {
                   auth_authorize_url: server.auth_authorize_url,
                   auth_token_url: server.auth_token_url,
                   auth_login_path: server.auth_login_path,
-                  auth_login_port: server.auth_login_port,
+                  auth_login_port: server.auth_login_port ?? 8443,
                   auth_token_path: server.auth_token_path,
-                  auth_application_ids: server.auth_application_ids ?? server.auth_client_id ?? "twcworkbench",
-                  auth_client_id: server.auth_client_id ?? server.auth_application_ids ?? "twcworkbench",
+                  auth_application_ids: server.auth_application_ids ?? (serverAuthMethod === "authentication_id" ? server.auth_client_id ?? "twcworkbench" : "twcworkbench"),
+                  auth_client_id: clientIdForAuthMethod(server.auth_client_id, serverAuthMethod),
                   auth_client_secret: null,
                   auth_scope: server.auth_scope ?? "openid",
                   auth_return_url_parameter: server.auth_return_url_parameter ?? "redirect_uri",
@@ -7380,11 +7413,12 @@ export default function WorkspacePage() {
                         </Grid>
                         <Grid item xs={12} md={4}>
                           <TextField
-                            label="Base URL"
+                            label="Teamwork Cloud REST / OSMC URL"
                             value={draft.base_url}
                             onChange={(event) =>
                               setServerPresetDrafts((current) => ({ ...current, [server.id]: { ...draft, base_url: event.target.value } }))
                             }
+                            helperText="REST/OSMC endpoint. Example: https://twc2024.company.com:8111"
                             fullWidth
                           />
                         </Grid>
@@ -7417,7 +7451,10 @@ export default function WorkspacePage() {
                                   auth_method: version === "2022x" && draft.auth_method === "openid" ? "authentication_id" : draft.auth_method,
                                   auth_scope: version === "2022x" ? draft.auth_scope || null : draft.auth_scope || "openid",
                                   auth_application_ids: draft.auth_application_ids || draft.auth_client_id || "twcworkbench",
-                                  auth_client_id: draft.auth_client_id || "twcworkbench",
+                                  auth_client_id: clientIdForAuthMethod(
+                                    draft.auth_client_id,
+                                    version === "2022x" && draft.auth_method === "openid" ? "authentication_id" : draft.auth_method ?? "authentication_id",
+                                  ),
                                 },
                               }));
                             }}
@@ -7452,6 +7489,11 @@ export default function WorkspacePage() {
                                 [server.id]: {
                                   ...draft,
                                   auth_method: event.target.value as TWCServerAuthMethod,
+                                  auth_application_ids:
+                                    event.target.value === "authentication_id"
+                                      ? draft.auth_application_ids || draft.auth_client_id || "twcworkbench"
+                                      : draft.auth_application_ids || "twcworkbench",
+                                  auth_client_id: clientIdForAuthMethod(draft.auth_client_id, event.target.value as TWCServerAuthMethod),
                                   auth_scope:
                                     event.target.value === "oauth"
                                       ? null
@@ -7549,6 +7591,21 @@ export default function WorkspacePage() {
                                   }))
                                 }
                                 helperText="Leave blank to keep the saved secret unchanged; enter a value only to set or rotate it."
+                                fullWidth
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={3}>
+                              <TextField
+                                label="AuthServer port"
+                                type="number"
+                                value={draft.auth_login_port ?? 8443}
+                                onChange={(event) =>
+                                  setServerPresetDrafts((current) => ({
+                                    ...current,
+                                    [server.id]: { ...draft, auth_login_port: event.target.value ? Number(event.target.value) : null },
+                                  }))
+                                }
+                                helperText="Default TWC SSO port is 8443."
                                 fullWidth
                               />
                             </Grid>

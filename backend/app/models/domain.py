@@ -71,7 +71,7 @@ class ServerProfileBase(BaseModel):
     auth_authorize_url: str | None = None
     auth_token_url: str | None = None
     auth_login_path: str | None = None
-    auth_login_port: int | None = Field(default=None, ge=1, le=65535)
+    auth_login_port: int | None = Field(default=8443, ge=1, le=65535)
     auth_token_path: str | None = None
     auth_application_ids: str | None = None
     auth_client_id: str | None = None
@@ -110,7 +110,8 @@ class ServerProfileBase(BaseModel):
                     break
         if payload.get("auth_client_id") is None and payload.get("client_id"):
             payload["auth_client_id"] = payload.get("client_id")
-        if payload.get("auth_client_id") is None and payload.get("auth_application_ids"):
+        auth_method = str(payload.get("auth_method") or "").strip().lower()
+        if payload.get("auth_client_id") is None and payload.get("auth_application_ids") and auth_method in {"", TWCServerAuthMethod.AUTHENTICATION_ID.value}:
             payload["auth_client_id"] = payload.get("auth_application_ids")
         if payload.get("oslc_callback_url") is None and payload.get("callback_url"):
             payload["oslc_callback_url"] = payload.get("callback_url")
@@ -218,7 +219,8 @@ class ServerProfileUpdate(BaseModel):
                     break
         if payload.get("auth_client_id") is None and payload.get("client_id"):
             payload["auth_client_id"] = payload.get("client_id")
-        if payload.get("auth_client_id") is None and payload.get("auth_application_ids"):
+        auth_method = str(payload.get("auth_method") or "").strip().lower()
+        if payload.get("auth_client_id") is None and payload.get("auth_application_ids") and auth_method in {"", TWCServerAuthMethod.AUTHENTICATION_ID.value}:
             payload["auth_client_id"] = payload.get("auth_application_ids")
         if payload.get("oslc_callback_url") is None and payload.get("callback_url"):
             payload["oslc_callback_url"] = payload.get("callback_url")

@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from datetime import datetime
 import asyncio
 import base64
+import json
 import sqlite3
 import unittest
 from unittest.mock import patch
@@ -17,9 +18,11 @@ from app.adapters.teamwork import TeamworkAdapter
 from app.auth.twc import (
     build_callback_url,
     build_twc_authentication_id_authorization_url,
+    build_twc_oauth2_authorization_url,
     build_twc_oidc_authorization_url,
     build_twc_signin_url,
     exchange_twc_auth_code,
+    preferred_username_from_token_bundle,
 )
 from app.core.storage import SqliteRepository
 from app.models.domain import (
@@ -37,6 +40,7 @@ from app.models.domain import (
     WorkbenchUserCreateRequest,
     WorkbenchUserRole,
     WorkbenchUserUpdateRequest,
+    TokenBundle,
 )
 from app.services.platform import PlatformService
 from app.settings.config import Settings
@@ -177,7 +181,7 @@ class AuthenticationSourceTruthTests(unittest.TestCase):
         url = build_twc_authentication_id_authorization_url(SimpleNamespace(settings=settings), server, "state-value")
         query = parse_qs(urlparse(url).query)
 
-        self.assertEqual(urlparse(url).netloc, "twc.example:8111")
+        self.assertEqual(urlparse(url).netloc, "twc.example:8443")
         self.assertEqual(urlparse(url).path, "/authentication/authorize")
         self.assertEqual(query["client_id"], ["twcworkbench"])
         self.assertEqual(query["response_type"], ["code"])
@@ -249,6 +253,34 @@ class AuthenticationSourceTruthTests(unittest.TestCase):
         self.assertEqual(config["token_secret_transport"], "client-secret-basic")
         self.assertEqual(config["source"], "twc-oauth2-client")
 
+    def test_openid_does_not_use_authentication_id_placeholder_as_client_id(self) -> None:
+        settings = Settings(app_origin="https://workbench.example", twc_auth_client_secret="client-secret")
+        server = ServerProfile(
+            id="twc-2024x",
+            name="TWC 2024x",
+            base_url="https://twc.example:8443",
+            auth_method=TWCServerAuthMethod.OPENID,
+            auth_application_ids="twcworkbench",
+            auth_client_id="twcworkbench",
+        )
+
+        with self.assertRaisesRegex(ValueError, "generated TWC OpenID Client ID"):
+            build_twc_oidc_authorization_url(SimpleNamespace(settings=settings), server, "state-value")
+
+    def test_oauth2_does_not_use_authentication_id_placeholder_as_client_id(self) -> None:
+        settings = Settings(app_origin="https://workbench.example", twc_auth_client_secret="client-secret")
+        server = ServerProfile(
+            id="twc-2024x",
+            name="TWC 2024x",
+            base_url="https://twc.example:8443",
+            auth_method=TWCServerAuthMethod.OAUTH,
+            auth_application_ids="twcworkbench",
+            auth_client_id="twcworkbench",
+        )
+
+        with self.assertRaisesRegex(ValueError, "generated TWC OAuth 2.0 Client ID"):
+            build_twc_oauth2_authorization_url(SimpleNamespace(settings=settings), server, "state-value")
+
     def test_oslc_base_url_override_is_used_for_osmc_candidates_only(self) -> None:
         adapter = object.__new__(TeamworkAdapter)
         adapter.context = SimpleNamespace(
@@ -262,6 +294,24 @@ class AuthenticationSourceTruthTests(unittest.TestCase):
 
         self.assertEqual(adapter._candidate_url("/osmc/resources"), "https://oslc.example:9443/osmc/resources")
         self.assertEqual(adapter._candidate_url("/authentication/session"), "https://twc.example:8111/authentication/session")
+
+    def test_osmc_candidates_derive_rest_port_when_base_url_is_authserver_port(self) -> None:
+        adapter = object.__new__(TeamworkAdapter)
+        adapter.context = SimpleNamespace(
+            server=ServerProfile(
+                id="twc-2024x",
+                name="TWC 2024x",
+                base_url="https://twc.example:8443",
+            )
+        )
+
+        self.assertEqual(adapter._candidate_url("/osmc/admin/currentUser"), "https://twc.example:8111/osmc/admin/currentUser")
+
+    def test_preferred_username_can_be_resolved_from_oidc_id_token(self) -> None:
+        claims = base64.urlsafe_b64encode(json.dumps({"preferred_username": "ray.user"}).encode("utf-8")).decode("ascii").rstrip("=")
+        bundle = TokenBundle(access_token=f"head.{claims}.sig", id_token=f"head.{claims}.sig")
+
+        self.assertEqual(preferred_username_from_token_bundle(bundle), "ray.user")
 
     def test_2024x_openid_defaults_use_oidc_client_paths(self) -> None:
         settings = Settings()
@@ -378,7 +428,7 @@ class AuthenticationSourceTruthTests(unittest.TestCase):
             bundle = asyncio.run(exchange_twc_auth_code(container, server, "code-value"))
 
         post = next(value for method, value in calls if method == "post")
-        self.assertEqual(post["url"], "https://twc.example:8111/authentication/api/token")
+        self.assertEqual(post["url"], "https://twc.example:8443/authentication/api/token")
         self.assertEqual(post["headers"], {"X-Auth-Secret": "client-secret"})
         self.assertEqual(post["data"]["client_id"], "twcworkbench")
         self.assertEqual(post["data"]["grant_type"], "authorization_code")

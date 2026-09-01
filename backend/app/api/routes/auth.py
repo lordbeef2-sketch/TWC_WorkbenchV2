@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 from app.api.deps import get_container, get_session, require_admin, require_admin_csrf, require_csrf, require_group_manager, require_group_manager_csrf
-from app.auth.twc import build_twc_signin_url, exchange_twc_auth_code
+from app.auth.twc import build_twc_signin_url, exchange_twc_auth_code, preferred_username_from_token_bundle
 from app.models.domain import (
     TokenLoginRequest,
     WorkbenchAuthSettings,
@@ -329,6 +329,7 @@ async def callback(
             session = await container.platform.login_with_token_bundle(
                 server.id,
                 token_bundle,
+                preferred_username=preferred_username_from_token_bundle(token_bundle),
                 upstream_roles=container.settings.extract_upstream_roles(request.headers),
                 upstream_groups=container.settings.extract_upstream_groups(request.headers),
             )

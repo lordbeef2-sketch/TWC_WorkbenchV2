@@ -44,7 +44,7 @@ function createDefaultProfile(defaultDisplayOrder = 0): ServerProfileInput {
     auth_authorize_url: null,
     auth_token_url: null,
     auth_login_path: null,
-    auth_login_port: null,
+    auth_login_port: 8443,
     auth_token_path: null,
     auth_application_ids: "twcworkbench",
     auth_client_id: "twcworkbench",
@@ -56,6 +56,14 @@ function createDefaultProfile(defaultDisplayOrder = 0): ServerProfileInput {
     oslc_consumer_secret: null,
     oslc_callback_url: null,
   };
+}
+
+function clientIdForAuthMethod(value: string | null | undefined, authMethod: TWCServerAuthMethod): string | null {
+  const trimmed = value?.trim() ?? "";
+  if (authMethod !== "authentication_id" && trimmed.toLowerCase() === "twcworkbench") {
+    return null;
+  }
+  return trimmed || (authMethod === "authentication_id" ? "twcworkbench" : null);
 }
 
 export default function ServerProfileDialog({ open, initialValue, defaultDisplayOrder = 0, onClose, onSubmit }: ServerProfileDialogProps) {
@@ -70,13 +78,14 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
       setForm(createDefaultProfile(defaultDisplayOrder));
       return;
     }
+    const authMethod = initialValue.auth_method ?? "authentication_id";
     setForm({
       id: initialValue.id,
       name: initialValue.name,
       base_url: initialValue.base_url,
       workbench_public_url: initialValue.workbench_public_url,
       version: initialValue.version,
-      auth_method: initialValue.auth_method ?? "authentication_id",
+      auth_method: authMethod,
       verify_tls: initialValue.verify_tls,
       ca_bundle_path: initialValue.ca_bundle_path,
       enabled: initialValue.enabled,
@@ -85,10 +94,10 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
       auth_authorize_url: initialValue.auth_authorize_url,
       auth_token_url: initialValue.auth_token_url,
       auth_login_path: initialValue.auth_login_path,
-      auth_login_port: initialValue.auth_login_port,
+      auth_login_port: initialValue.auth_login_port ?? 8443,
       auth_token_path: initialValue.auth_token_path,
-      auth_application_ids: initialValue.auth_application_ids ?? initialValue.auth_client_id ?? "twcworkbench",
-      auth_client_id: initialValue.auth_client_id ?? "twcworkbench",
+      auth_application_ids: initialValue.auth_application_ids ?? (authMethod === "authentication_id" ? initialValue.auth_client_id ?? "twcworkbench" : "twcworkbench"),
+      auth_client_id: clientIdForAuthMethod(initialValue.auth_client_id, authMethod),
       auth_client_secret: null,
       auth_scope: initialValue.auth_scope ?? "openid",
       auth_return_url_parameter: initialValue.auth_return_url_parameter ?? "redirect_uri",
@@ -191,6 +200,14 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
                   ...current,
                   version,
                   auth_method: version === "2022x" && current.auth_method === "openid" ? "authentication_id" : current.auth_method,
+                  auth_application_ids:
+                    version === "2022x" && current.auth_method === "openid"
+                      ? current.auth_application_ids || "twcworkbench"
+                      : current.auth_application_ids,
+                  auth_client_id: clientIdForAuthMethod(
+                    current.auth_client_id,
+                    version === "2022x" && current.auth_method === "openid" ? "authentication_id" : current.auth_method ?? "authentication_id",
+                  ),
                   auth_scope: version === "2022x" ? current.auth_scope || null : current.auth_scope || "openid",
                 }));
               }}
@@ -202,10 +219,11 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
           </Grid>
           <Grid item xs={12}>
             <TextField
-              label="Teamwork Cloud Base URL"
+              label="Teamwork Cloud REST / OSMC URL"
               value={form.base_url}
               onChange={(event) => setField("base_url", event.target.value)}
               placeholder="https://twc.company.example:8111"
+              helperText="REST/OSMC endpoint. Use the AuthServer port below only for SSO."
               fullWidth
               required
             />
@@ -230,6 +248,11 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
                 setForm((current) => ({
                   ...current,
                   auth_method: nextMethod,
+                  auth_application_ids:
+                    nextMethod === "authentication_id"
+                      ? current.auth_application_ids || current.auth_client_id || "twcworkbench"
+                      : current.auth_application_ids || "twcworkbench",
+                  auth_client_id: clientIdForAuthMethod(current.auth_client_id, nextMethod),
                   auth_scope: nextMethod === "oauth" ? null : nextMethod === "openid" ? current.auth_scope || "openid" : current.auth_scope || null,
                 }));
               }}
@@ -302,6 +325,16 @@ export default function ServerProfileDialog({ open, initialValue, defaultDisplay
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <TextField label="Client secret" type="password" value={form.auth_client_secret ?? ""} onChange={(event) => setField("auth_client_secret", event.target.value || null)} helperText="Saved on submit; not shown again after reload." fullWidth />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      label="AuthServer port"
+                      type="number"
+                      value={form.auth_login_port ?? 8443}
+                      onChange={(event) => setField("auth_login_port", event.target.value ? Number(event.target.value) : null)}
+                      helperText="Default TWC SSO port is 8443."
+                      fullWidth
+                    />
                   </Grid>
                     </>
                   ) : null}

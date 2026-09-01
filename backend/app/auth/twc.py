@@ -38,14 +38,14 @@ def _auth_client_id(settings: Settings, server) -> str | None:
     override = _auth_override(settings, server)
     auth_method = _server_auth_method(server)
     if auth_method in {TWCServerAuthMethod.OAUTH, TWCServerAuthMethod.OPENID}:
-        return (
+        candidate = (
             _server_auth_value(server, "auth_client_id")
-            or _server_auth_value(server, "auth_application_ids")
             or (override.client_id if override and override.client_id else None)
-            or (override.application_ids if override and override.application_ids else None)
             or settings.resolved_twc_auth_client_id
-            or "twcworkbench"
         )
+        if candidate and candidate.strip().lower() != "twcworkbench":
+            return candidate
+        return None
     return (
         _server_auth_value(server, "auth_application_ids")
         or _server_auth_value(server, "auth_client_id")
@@ -271,11 +271,16 @@ def _build_twc_discovery_url(settings: Settings, server) -> str:
         return override.discovery_url
     if settings.twc_oidc_discovery_url:
         return settings.twc_oidc_discovery_url
+    login_port = _server_auth_value(server, "auth_login_port")
+    if login_port is None:
+        login_port = (override.login_port if override and override.login_port is not None else None)
+    if login_port is None:
+        login_port = settings.twc_oidc_port
     return build_twc_auth_server_url(
         settings,
         server,
         settings.twc_oidc_discovery_path,
-        port=settings.twc_oidc_port,
+        port=login_port,
     )
 
 
@@ -345,9 +350,8 @@ def build_twc_oidc_authorization_url(container: ApplicationContainer, server, st
     client_id = _auth_client_id(settings, server)
     if not client_id:
         raise ValueError(
-            "A TWC AuthServer Application ID(s) value must be configured for Teamwork Cloud SSO. "
-            "Use the TWC Application ID(s) value in the server profile, TWC_AUTH_APPLICATION_IDS, "
-            "TWC_AUTH_CLIENT_ID, or a per-server TWC_AUTH_SERVER_OVERRIDES entry."
+            "A generated TWC OpenID Client ID must be configured for this 2024x server. "
+            "Save the Teamwork Cloud Admin OpenID client, then paste its generated Client ID into Workbench."
         )
     callback_url = build_callback_url(settings, server)
     login_url = _build_twc_authorize_base_url(settings, server)
@@ -391,7 +395,10 @@ def build_twc_oauth2_authorization_url(container: ApplicationContainer, server, 
     settings = container.settings
     client_id = _auth_client_id(settings, server)
     if not client_id:
-        raise ValueError("A TWC OAuth 2.0 Client ID must be configured for this server.")
+        raise ValueError(
+            "A generated TWC OAuth 2.0 Client ID must be configured for this server. "
+            "Save the Teamwork Cloud Admin OAuth 2.0 client, then paste its generated Client ID into Workbench."
+        )
     callback_url = build_callback_url(settings, server)
     login_url = _build_twc_oauth2_authorize_base_url(settings, server)
     query_values = {
@@ -451,6 +458,16 @@ async def build_twc_signin_url(container: ApplicationContainer, server, state: s
 
 
 def infer_token_expiry(token: str | None) -> datetime | None:
+    claims = _jwt_payload_claims(token)
+    if not claims:
+        return None
+    exp = claims.get("exp")
+    if not isinstance(exp, (int, float)):
+        return None
+    return datetime.fromtimestamp(exp, tz=UTC)
+
+
+def _jwt_payload_claims(token: str | None) -> dict[str, Any] | None:
     if not token or token.count(".") < 2:
         return None
     try:
@@ -460,10 +477,22 @@ def infer_token_expiry(token: str | None) -> datetime | None:
         claims = json.loads(decoded)
     except (ValueError, json.JSONDecodeError):
         return None
-    exp = claims.get("exp")
-    if not isinstance(exp, (int, float)):
+    if not isinstance(claims, dict):
         return None
-    return datetime.fromtimestamp(exp, tz=UTC)
+    return claims
+
+
+def preferred_username_from_token_bundle(bundle: TokenBundle) -> str | None:
+    """Extract the TWC username from returned OIDC/OAuth JWT claims when present."""
+    for token in (bundle.id_token, bundle.access_token):
+        claims = _jwt_payload_claims(token)
+        if not claims:
+            continue
+        for key in ("preferred_username", "username", "user_name", "upn", "email", "sub"):
+            value = claims.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
 
 
 def _bundle_from_authserver_payload(payload: dict[str, Any], *, scope: str | None = None) -> TokenBundle:
@@ -499,6 +528,17 @@ async def _request_authserver_tokens(
     client_id = _auth_client_id(settings, server)
     client_secret = _auth_client_secret(settings, server)
     if not client_id or not client_secret:
+        auth_method = _server_auth_method(server)
+        if auth_method == TWCServerAuthMethod.OPENID:
+            raise PermissionError(
+                "A generated TWC OpenID Client ID and secret must be configured for SSO code exchange. "
+                "Save the Teamwork Cloud Admin OpenID client, then paste its generated Client ID and secret into Workbench."
+            )
+        if auth_method == TWCServerAuthMethod.OAUTH:
+            raise PermissionError(
+                "A generated TWC OAuth 2.0 Client ID and secret must be configured for SSO code exchange. "
+                "Save the Teamwork Cloud Admin OAuth 2.0 client, then paste its generated Client ID and secret into Workbench."
+            )
         raise PermissionError(
             "A TWC AuthServer Application ID(s) value and secret must be configured for SSO code exchange. "
             "Use the server profile Application ID(s), TWC_AUTH_APPLICATION_IDS/TWC_AUTH_CLIENT_SECRET, "
@@ -577,6 +617,11 @@ async def exchange_twc_auth_code(container: ApplicationContainer, server, code: 
 async def refresh_twc_auth_token(settings: Settings, server, refresh_token: str) -> TokenBundle:
     client_id = _auth_client_id(settings, server)
     if not client_id:
+        auth_method = _server_auth_method(server)
+        if auth_method == TWCServerAuthMethod.OPENID:
+            raise PermissionError("A generated TWC OpenID Client ID must be configured for Teamwork Cloud token refresh.")
+        if auth_method == TWCServerAuthMethod.OAUTH:
+            raise PermissionError("A generated TWC OAuth 2.0 Client ID must be configured for Teamwork Cloud token refresh.")
         raise PermissionError("A TWC AuthServer Application ID(s) value must be configured for Teamwork Cloud token refresh.")
     form_data = {
         "redirect_uri": build_callback_url(settings, server),
