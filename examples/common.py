@@ -33,10 +33,10 @@ class AuthConfig:
     token_url: str = ""
     auth_scheme: str = "https"
     auth_port: int = 8443
-    discovery_path: str = "/authentication/.well-known/openid-configuration"
-    authorize_path: str = "/authentication/authorize"
-    token_path: str = "/authentication/api/token"
-    token_auth_method: str = "x_auth_secret"
+    discovery_path: str = "/authentication/.well-known/oidc-configuration"
+    authorize_path: str = "/authentication/oidc/authorize"
+    token_path: str = "/authentication/api/oidc/token"
+    token_auth_method: str = "client_secret_basic"
     callback_host: str = "127.0.0.1"
     callback_port: int = 8765
     callback_path: str = "/callback"
@@ -174,7 +174,7 @@ def authorize_url(config: ExampleConfig) -> str:
     discovered = oidc_configuration(config).get("authorization_endpoint")
     if isinstance(discovered, str) and discovered.strip():
         return discovered.strip()
-    return build_auth_server_url(config, config.auth.authorize_path or "/authentication/authorize")
+    return build_auth_server_url(config, config.auth.authorize_path or "/authentication/oidc/authorize")
 
 
 def token_url(config: ExampleConfig) -> str:
@@ -183,13 +183,13 @@ def token_url(config: ExampleConfig) -> str:
     discovered = oidc_configuration(config).get("token_endpoint")
     if isinstance(discovered, str) and discovered.strip():
         return discovered.strip()
-    return build_auth_server_url(config, config.auth.token_path or "/authentication/api/token")
+    return build_auth_server_url(config, config.auth.token_path or "/authentication/api/oidc/token")
 
 
 def oidc_configuration(config: ExampleConfig) -> dict[str, Any]:
     discovery_url = config.auth.discovery_url.strip() or build_auth_server_url(
         config,
-        config.auth.discovery_path or "/authentication/.well-known/openid-configuration",
+        config.auth.discovery_path or "/authentication/.well-known/oidc-configuration",
     )
     try:
         with httpx.Client(verify=build_requests_verify(config), follow_redirects=True) as session:
@@ -295,22 +295,14 @@ def exchange_auth_code(config: ExampleConfig, code: str) -> TokenBundle:
     if config.resolved_auth_scope:
         form_data["scope"] = config.resolved_auth_scope
     with requests_session(config) as session:
-        if config.auth.token_auth_method.strip().lower() == "client_secret_basic":
-            response = session.post(
-                token_url(config),
-                auth=httpx.BasicAuth(config.auth.client_id.strip(), config.auth.client_secret.strip()),
-                data=form_data,
-                timeout=max(config.request_timeout_seconds, 30),
-            )
-        elif config.auth.token_auth_method.strip().lower() == "x_auth_secret":
-            response = session.post(
-                token_url(config),
-                headers={"X-Auth-Secret": config.auth.client_secret.strip()},
-                data=form_data,
-                timeout=max(config.request_timeout_seconds, 30),
-            )
-        else:
-            raise ExampleError("token_auth_method must be client_secret_basic or x_auth_secret.")
+        if config.auth.token_auth_method.strip().lower() != "client_secret_basic":
+            raise ExampleError("The OpenID client examples use the TWC Admin OpenID client_secret_basic token method.")
+        response = session.post(
+            token_url(config),
+            auth=httpx.BasicAuth(config.auth.client_id.strip(), config.auth.client_secret.strip()),
+            data=form_data,
+            timeout=max(config.request_timeout_seconds, 30),
+        )
     if response.status_code >= 400:
         raise ExampleError(f"AuthServer token exchange failed with HTTP {response.status_code}: {response.text[:500]}")
     try:
@@ -330,22 +322,14 @@ def refresh_auth_token(config: ExampleConfig, refresh_token: str) -> TokenBundle
     if config.resolved_auth_scope:
         form_data["scope"] = config.resolved_auth_scope
     with requests_session(config) as session:
-        if config.auth.token_auth_method.strip().lower() == "client_secret_basic":
-            response = session.post(
-                token_url(config),
-                auth=httpx.BasicAuth(config.auth.client_id.strip(), config.auth.client_secret.strip()),
-                data=form_data,
-                timeout=max(config.request_timeout_seconds, 30),
-            )
-        elif config.auth.token_auth_method.strip().lower() == "x_auth_secret":
-            response = session.post(
-                token_url(config),
-                headers={"X-Auth-Secret": config.auth.client_secret.strip()},
-                data=form_data,
-                timeout=max(config.request_timeout_seconds, 30),
-            )
-        else:
-            raise ExampleError("token_auth_method must be client_secret_basic or x_auth_secret.")
+        if config.auth.token_auth_method.strip().lower() != "client_secret_basic":
+            raise ExampleError("The OpenID client examples use the TWC Admin OpenID client_secret_basic token method.")
+        response = session.post(
+            token_url(config),
+            auth=httpx.BasicAuth(config.auth.client_id.strip(), config.auth.client_secret.strip()),
+            data=form_data,
+            timeout=max(config.request_timeout_seconds, 30),
+        )
     if response.status_code >= 400:
         raise ExampleError(f"AuthServer token refresh failed with HTTP {response.status_code}: {response.text[:500]}")
     try:

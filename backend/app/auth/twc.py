@@ -145,7 +145,7 @@ def _build_twc_authorize_base_url(settings: Settings, server) -> str:
         login_port = (override.login_port if override and override.login_port is not None else None)
     if login_port is None:
         login_port = settings.twc_oidc_port
-    return build_twc_auth_server_url(settings, server, login_path or "/authentication/authorize", port=login_port)
+    return build_twc_auth_server_url(settings, server, login_path or "/authentication/oidc/authorize", port=login_port)
 
 
 def _build_twc_authentication_id_authorize_base_url(settings: Settings, server) -> str:
@@ -188,14 +188,14 @@ def _build_twc_token_url(settings: Settings, server) -> str:
         or settings.twc_oidc_authorize_url
     )
     if authorize_url:
-        return _url_with_path(authorize_url, token_path or "/authentication/api/token")
+        return _url_with_path(authorize_url, token_path or "/authentication/api/oidc/token")
 
     login_port = _server_auth_value(server, "auth_login_port")
     if login_port is None:
         login_port = (override.login_port if override and override.login_port is not None else None)
     if login_port is None:
         login_port = settings.twc_oidc_port
-    return build_twc_auth_server_url(settings, server, token_path or "/authentication/api/token", port=login_port)
+    return build_twc_auth_server_url(settings, server, token_path or "/authentication/api/oidc/token", port=login_port)
 
 
 def _build_twc_authentication_id_token_url(settings: Settings, server) -> str:
@@ -222,6 +222,47 @@ def _build_twc_authentication_id_token_url(settings: Settings, server) -> str:
     return build_twc_auth_server_url(settings, server, token_path, port=login_port)
 
 
+def _build_twc_oauth2_authorize_base_url(settings: Settings, server) -> str:
+    override = _auth_override(settings, server)
+    if authorize_url := _server_auth_value(server, "auth_authorize_url"):
+        return authorize_url
+    if override and override.authorize_url:
+        return override.authorize_url
+    login_path = (
+        _server_auth_value(server, "auth_login_path")
+        or (override.login_path if override and override.login_path else None)
+        or "/authentication/oauth2/authorize"
+    )
+    login_port = _server_auth_value(server, "auth_login_port")
+    if login_port is None:
+        login_port = (override.login_port if override and override.login_port is not None else None)
+    if login_port is None:
+        login_port = settings.twc_oidc_port
+    return build_twc_auth_server_url(settings, server, login_path, port=login_port)
+
+
+def _build_twc_oauth2_token_url(settings: Settings, server) -> str:
+    override = _auth_override(settings, server)
+    if token_url := _server_auth_value(server, "auth_token_url"):
+        return token_url
+    if override and override.token_url:
+        return override.token_url
+    token_path = (
+        _server_auth_value(server, "auth_token_path")
+        or (override.token_path if override and override.token_path else None)
+        or "/authentication/api/oauth2/token"
+    )
+    authorize_url = _server_auth_value(server, "auth_authorize_url") or (override.authorize_url if override and override.authorize_url else None)
+    if authorize_url:
+        return _url_with_path(authorize_url, token_path)
+    login_port = _server_auth_value(server, "auth_login_port")
+    if login_port is None:
+        login_port = (override.login_port if override and override.login_port is not None else None)
+    if login_port is None:
+        login_port = settings.twc_oidc_port
+    return build_twc_auth_server_url(settings, server, token_path, port=login_port)
+
+
 def _build_twc_discovery_url(settings: Settings, server) -> str:
     override = _auth_override(settings, server)
     if discovery_url := _server_auth_value(server, "auth_discovery_url"):
@@ -239,10 +280,10 @@ def _build_twc_discovery_url(settings: Settings, server) -> str:
 
 
 async def resolve_twc_oidc_configuration(settings: Settings, server) -> dict[str, Any]:
-    """Resolve the 2024x AuthServer OpenID endpoints from discovery.
+    """Resolve the 2024x AuthServer OpenID Connect endpoints from discovery.
 
     Explicit per-server URLs remain authoritative. If discovery is unavailable,
-    the documented 2024x AuthServer endpoint paths are used as a bounded fallback.
+    the documented 2024x OpenID Connect endpoint paths are used as a bounded fallback.
     """
     override = _auth_override(settings, server)
     explicit_authorize = (
@@ -261,7 +302,7 @@ async def resolve_twc_oidc_configuration(settings: Settings, server) -> dict[str
         "token_endpoint_auth_methods_supported": [_auth_token_method(settings, server)],
         "scopes_supported": ["openid"],
         "discovery_endpoint": _build_twc_discovery_url(settings, server),
-        "source": "explicit" if explicit_authorize and explicit_token else "documented-2024x-authserver-default",
+        "source": "explicit" if explicit_authorize and explicit_token else "documented-2024x-openid-default",
     }
     if explicit_authorize and explicit_token:
         return configuration
@@ -346,6 +387,26 @@ def build_twc_authentication_id_authorization_url(container: ApplicationContaine
     return f"{login_url}{separator}{query}"
 
 
+def build_twc_oauth2_authorization_url(container: ApplicationContainer, server, state: str) -> str:
+    settings = container.settings
+    client_id = _auth_client_id(settings, server)
+    if not client_id:
+        raise ValueError("A TWC OAuth 2.0 Client ID must be configured for this server.")
+    callback_url = build_callback_url(settings, server)
+    login_url = _build_twc_oauth2_authorize_base_url(settings, server)
+    query_values = {
+        _auth_return_url_parameter(settings, server): callback_url,
+        "client_id": client_id,
+        "response_type": "code",
+        "state": state,
+    }
+    if scope := _auth_scope(settings, server):
+        query_values["scope"] = scope
+    query = urlencode(query_values)
+    separator = "&" if "?" in login_url else "?"
+    return f"{login_url}{separator}{query}"
+
+
 async def build_twc_authentication_id_signin_url(container: ApplicationContainer, server, state: str) -> tuple[str, dict[str, Any]]:
     return build_twc_authentication_id_authorization_url(container, server, state), {
         "authorization_endpoint": _build_twc_authentication_id_authorize_base_url(container.settings, server),
@@ -356,9 +417,9 @@ async def build_twc_authentication_id_signin_url(container: ApplicationContainer
 
 
 async def build_twc_oauth2_signin_url(container: ApplicationContainer, server, state: str) -> tuple[str, dict[str, Any]]:
-    return build_twc_authentication_id_authorization_url(container, server, state), {
-        "authorization_endpoint": _build_twc_authentication_id_authorize_base_url(container.settings, server),
-        "token_endpoint": _build_twc_authentication_id_token_url(container.settings, server),
+    return build_twc_oauth2_authorization_url(container, server, state), {
+        "authorization_endpoint": _build_twc_oauth2_authorize_base_url(container.settings, server),
+        "token_endpoint": _build_twc_oauth2_token_url(container.settings, server),
         "token_secret_transport": "client-secret-basic",
         "source": "twc-oauth2-client",
     }
@@ -469,7 +530,7 @@ async def _request_authserver_tokens(
         token_method = "x_auth_secret"
     elif auth_method == TWCServerAuthMethod.OAUTH:
         configuration = {
-            "token_endpoint": _build_twc_authentication_id_token_url(settings, server),
+            "token_endpoint": _build_twc_oauth2_token_url(settings, server),
             "token_secret_transport": "client-secret-basic",
             "source": "twc-oauth2-client",
         }

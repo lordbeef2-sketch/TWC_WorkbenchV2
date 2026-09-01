@@ -8,12 +8,12 @@ for product documentation.
 ## Documented by official 2024x sources
 
 The Developer Guide page `OpenID Connect authentication` documents the 2024x
-OpenID web-application contract:
+TWC Admin OpenID Connect client contract:
 
-- Discovery: `/authentication/.well-known/openid-configuration`
-- Authorization endpoint: `/authentication/authorize`
-- Token endpoint: `/authentication/api/token`
-- Token endpoint authentication: `X-Auth-Secret`
+- Discovery: `/authentication/.well-known/oidc-configuration`
+- Authorization endpoint: `/authentication/oidc/authorize`
+- Token endpoint: `/authentication/api/oidc/token`
+- Token endpoint authentication: `client_secret_basic`
 - Supported scope: `openid`
 - Supported grants include `authorization_code` and `refresh_token`
 - OIDC clients are registered under Web Application Platform Settings ->
@@ -33,6 +33,13 @@ AuthServer `authserver.properties` Application ID(s) flow:
 - Token endpoint secret transport: `X-Auth-Secret`
 - TWC REST receives the returned ID token as `Authorization: Token <ID token>`.
 
+The Developer Guide also documents the TWC Admin OAuth 2.0 client contract:
+
+- Discovery: `/authentication/.well-known/oauth-authorization-server`
+- Authorization endpoint: `/authentication/oauth2/authorize`
+- Token endpoint: `/authentication/api/oauth2/token`
+- Token endpoint authentication: `client_secret_basic`
+
 Official URL:
 `https://docs.nomagic.com/spaces/TWCloud2024x/pages/137987741/Token-based+authentication`
 
@@ -44,8 +51,10 @@ Workbench sign-in is selected per server profile:
   defaults to `/authentication/authorize` and `/authentication/api/token`,
   exchanges the returned code with `X-Auth-Secret`, and validates the user
   against `/osmc/admin/currentUser`.
-- OpenID uses the 2024x OpenID lane with discovery or explicit authorize/token
-  URLs and the configured OpenID token authentication method.
+- OpenID uses the 2024x TWC Admin OpenID Connect client lane with discovery or
+  explicit authorize/token URLs and `client_secret_basic` by default.
+- OAuth 2.0 uses the 2024x TWC Admin OAuth client lane with `/oauth2` endpoint
+  paths and `client_secret_basic`.
 - OAuth is reserved for OSLC/RealSwagger consumer configuration and is not a
   Workbench browser sign-in lane.
 

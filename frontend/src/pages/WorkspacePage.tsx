@@ -7214,7 +7214,7 @@ export default function WorkspacePage() {
                       <>
                     <Grid item xs={12}>
                       <Typography variant="body2" color="text.secondary">
-                        OpenID uses the Teamwork Cloud AuthServer endpoints <code>/authentication/authorize</code> and <code>/authentication/api/token</code>. Register this exact redirect URI in the OpenID client: <code>{newServerCallbackUri}</code>. After TWC saves the client, paste the generated OpenID Client ID below.
+                        OpenID uses the TWC Admin OpenID client endpoints <code>/authentication/oidc/authorize</code> and <code>/authentication/api/oidc/token</code>. Register this exact redirect URI in the OpenID client: <code>{newServerCallbackUri}</code>. After TWC saves the client, paste the generated OpenID Client ID below.
                       </Typography>
                     </Grid>
                       </>
@@ -7231,7 +7231,7 @@ export default function WorkspacePage() {
                     {newServerUsesOauth ? (
                       <Grid item xs={12}>
                         <Typography variant="body2" color="text.secondary">
-                          OAuth 2.0 uses the Teamwork Cloud AuthServer endpoints <code>/authentication/authorize</code> and <code>/authentication/api/token</code>. Register this exact redirect URI in the OAuth 2.0 client: <code>{newServerCallbackUri}</code>.
+                          OAuth 2.0 uses the TWC Admin OAuth client endpoints <code>/authentication/oauth2/authorize</code> and <code>/authentication/api/oauth2/token</code>. Register this exact redirect URI in the OAuth 2.0 client: <code>{newServerCallbackUri}</code>.
                         </Typography>
                       </Grid>
                     ) : null}
@@ -7489,7 +7489,7 @@ export default function WorkspacePage() {
                               <>
                             <Grid item xs={12}>
                               <Typography variant="body2" color="text.secondary">
-                                OpenID uses the Teamwork Cloud AuthServer endpoints <code>/authentication/authorize</code> and <code>/authentication/api/token</code>. Register this exact redirect URI in the OpenID client: <code>{draftCallbackUri}</code>. After TWC saves the client, paste the generated OpenID Client ID below.
+                                OpenID uses the TWC Admin OpenID client endpoints <code>/authentication/oidc/authorize</code> and <code>/authentication/api/oidc/token</code>. Register this exact redirect URI in the OpenID client: <code>{draftCallbackUri}</code>. After TWC saves the client, paste the generated OpenID Client ID below.
                               </Typography>
                             </Grid>
                               </>
@@ -7506,7 +7506,7 @@ export default function WorkspacePage() {
                             {draftUsesOauth ? (
                               <Grid item xs={12}>
                                 <Typography variant="body2" color="text.secondary">
-                                  OAuth 2.0 uses the Teamwork Cloud AuthServer endpoints <code>/authentication/authorize</code> and <code>/authentication/api/token</code>. Register this exact redirect URI in the OAuth 2.0 client: <code>{draftCallbackUri}</code>.
+                                  OAuth 2.0 uses the TWC Admin OAuth client endpoints <code>/authentication/oauth2/authorize</code> and <code>/authentication/api/oauth2/token</code>. Register this exact redirect URI in the OAuth 2.0 client: <code>{draftCallbackUri}</code>.
                                 </Typography>
                               </Grid>
                             ) : null}
